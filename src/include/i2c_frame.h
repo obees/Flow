@@ -107,6 +107,7 @@ typedef struct i2c_integral_frame
     uint8_t qual;
 } i2c_integral_frame;
 
-#define I2C_INTEGRAL_FRAME_SIZE (sizeof(i2c_integral_frame))
+//#define I2C_INTEGRAL_FRAME_SIZE (sizeof(i2c_integral_frame))
+#define I2C_INTEGRAL_FRAME_SIZE 25
 
 #endif /* I2C_FRAME_H_ */

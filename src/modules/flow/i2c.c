@@ -81,6 +81,7 @@
 #include "gyro.h"
 #include "sonar.h"
 #include "main.h"
+#include "debug.h"
 
 #include "mavlink_bridge_header.h"
 #include <mavlink.h>
@@ -101,6 +102,10 @@ uint8_t notpublishedIndexFrame2 = 1;
 uint8_t readout_done_frame1 = 1;
 uint8_t readout_done_frame2 = 1;
 uint8_t stop_accumulation = 0;
+
+//uint8_t toto = 0;
+//uint8_t toto2 = 0;
+
 
 void i2c_init() {
 
@@ -170,27 +175,38 @@ void I2C1_EV_IRQHandler(void) {
 	//uint8_t dataRX;
 	static uint8_t txDataIndex1 = 0x00;
 	static uint8_t txDataIndex2 = 0x00;
-	static uint8_t rxDataIndex = 0x00;
+	//static uint8_t rxDataIndex = 0x00;
 	switch (I2C_GetLastEvent(I2C1 )) {
 
 	case I2C_EVENT_SLAVE_RECEIVER_ADDRESS_MATCHED : {
 		I2C1 ->SR1;
 		I2C1 ->SR2;
-		rxDataIndex = 0;
+		//rxDataIndex = 0;
+		//debug_int_message_buffer("I2C_EVENT_SLAVE_RECEIVER_ADDRESS_MATCHED:",0);
+		//debug_message_send_one();
 		break;
 	}
 	case I2C_EVENT_SLAVE_TRANSMITTER_ADDRESS_MATCHED : {
 		I2C1 ->SR1;
 		I2C1 ->SR2;
+		//debug_int_message_buffer("I2C_EVENT_SLAVE_TRANSMITTER_ADDRESS_MATCHED:",0);
+		//debug_message_send_one();
 		break;
 	}
 	case I2C_EVENT_SLAVE_BYTE_RECEIVED : {
 		//receive address offset
 		dataRX = I2C_ReceiveData(I2C1 );
-		rxDataIndex++;
+		//debug_int_message_buffer("I2C_EVENT_SLAVE_BYTE_RECEIVED:",0);
+		//debug_message_send_one();
+		//rxDataIndex++;
+		//if (toto2 == 0) {
+		//		toto = dataRX;
+		//		toto2++;
+		///}
+
 		//set Index
 		txDataIndex1 = dataRX;
-		if (dataRX > I2C_FRAME_SIZE) {
+		if (dataRX >= I2C_FRAME_SIZE) {
 			txDataIndex2 = dataRX - I2C_FRAME_SIZE;
 		}
 		else {
@@ -204,28 +220,50 @@ void I2C1_EV_IRQHandler(void) {
 	case I2C_EVENT_SLAVE_BYTE_TRANSMITTING :
 	case I2C_EVENT_SLAVE_BYTE_TRANSMITTED : {
 
+		//debug_int_message_buffer("toto:",toto);
+		//debug_message_send_one();
+
 		if (txDataIndex1 < (I2C_FRAME_SIZE)) {
 			I2C_SendData(I2C1,
 					txDataFrame1[publishedIndexFrame1][txDataIndex1]);
-			txDataIndex1++;
-		} else {
-			I2C_SendData(I2C1,
-					txDataFrame2[publishedIndexFrame2][txDataIndex2]);
-			if (txDataIndex2 < I2C_INTEGRAL_FRAME_SIZE) {
-				txDataIndex2++;
-			}
+			//debug_int_message_buffer("txDataIndex1:",txDataIndex1);
+			//debug_message_send_one();
 
+			txDataIndex1++;
+		} else if ((uint8_t)txDataIndex2 < (uint8_t)(I2C_INTEGRAL_FRAME_SIZE)) {
+			I2C_SendData(I2C1, txDataFrame2[publishedIndexFrame2][txDataIndex2]);
+			//uint8_t tata = sizeof(txDataFrame2[publishedIndexFrame2]);
+			//debug_int_message_buffer("txDataIndex2:",tata);
+			//debug_message_send_one();
+
+			//debug_int_message_buffer("I2C_INTEGRAL_FRAME_SIZE:",I2C_INTEGRAL_FRAME_SIZE);
+			//debug_message_send_one();
+
+			//if ((uint8_t)txDataIndex2 < (uint8_t)(I2C_INTEGRAL_FRAME_SIZE)) {
+				//debug_int_message_buffer("txDataIndex2:",txDataIndex2);
+				//debug_message_send_one();
+
+				txDataIndex2++;
+			//}
 		}
 
 		//check whether last byte is read frame1
-		if (txDataIndex1 >= (I2C_FRAME_SIZE-1)) {
+		if (txDataIndex1 >= (I2C_FRAME_SIZE - 1)) {
 			readout_done_frame1 = 1;
+			//debug_int_message_buffer("I2C_EVENT_SLAVE_BYTE_TRANSM_txDataIndex2:",txDataIndex1);
+			//debug_message_send_one();
 		}
 
 		//check whether last byte is read fram2 and reset accumulation
-		if (txDataIndex2 >= (I2C_INTEGRAL_FRAME_SIZE-1)) {
+		if (txDataIndex2 >= (I2C_INTEGRAL_FRAME_SIZE - 1)) {
+			//debug_int_message_buffer("in if2:",txDataIndex2);
+			///debug_message_send_one();
+			txDataIndex2 = (I2C_INTEGRAL_FRAME_SIZE - 1);
 			readout_done_frame2 = 1;
 			stop_accumulation = 1;
+			//debug_int_message_buffer("I2C_EVENT_SLAVE_BYTE_TRANSM_txDataIndex2:",txDataIndex2);
+			//debug_message_send_one();
+
 		}
 
 		break;
@@ -250,6 +288,9 @@ void I2C1_ER_IRQHandler(void) {
 	if ((I2C_ReadRegister(I2C1, I2C_Register_SR1 ) & 0xFF00) != 0x00) {
 		/* Clears error flags */
 		I2C1 ->SR1 &= 0x00FF;
+		//uint16_t tmp = I2C1 ->SR1;
+		//debug_int_message_buffer("I2C1_ER_IRQHandler:", 9);
+		//debug_message_send_one();
 	}
 }
 
@@ -336,35 +377,55 @@ void update_TX_buffer(float pixel_flow_x, float pixel_flow_y,
 
 	//update lasttime
 	lasttime = get_boot_time_us();
-
-	f_integral.frame_count_since_last_readout = accumulated_framecount;
-	f_integral.gyro_x_rate_integral = accumulated_gyro_x * 10.0f;	//mrad*10
-	f_integral.gyro_y_rate_integral = accumulated_gyro_y * 10.0f;	//mrad*10
-	f_integral.gyro_z_rate_integral = accumulated_gyro_z * 10.0f; //mrad*10
-	f_integral.pixel_flow_x_integral = accumulated_flow_x * 10.0f; //mrad*10
-	f_integral.pixel_flow_y_integral = accumulated_flow_y * 10.0f; //mrad*10
-	f_integral.integration_timespan = integration_timespan;     //microseconds
-	f_integral.ground_distance = ground_distance * 1000;		    //mmeters
-	f_integral.sonar_timestamp = time_since_last_sonar_update;  //microseconds
-	f_integral.qual =
-			(uint8_t) (accumulated_quality / accumulated_framecount); //0-255 linear quality measurement 0=bad, 255=best
-	f_integral.gyro_temperature = gyro_temp;//Temperature * 100 in centi-degrees Celsius
+  // Structure de f_integral
+	// uint16_t frame_count_since_last_readout;
+	// int16_t pixel_flow_x_integral;
+	// int16_t pixel_flow_y_integral;
+	// int16_t gyro_x_rate_integral;
+	// int16_t gyro_y_rate_integral;
+	// int16_t gyro_z_rate_integral;
+	// uint32_t integration_timespan;
+	// uint32_t sonar_timestamp;
+	// uint16_t ground_distance;
+	// int16_t gyro_temperature;
+	// uint8_t qual;
+	// debug_int_message_buffer("integration_timespan",integration_timespan);
+	// debug_message_send_one();
+	f_integral.frame_count_since_last_readout = (uint16_t) accumulated_framecount;
+	f_integral.gyro_x_rate_integral = (int16_t) (accumulated_gyro_x * 10.0f);	//mrad*10
+	f_integral.gyro_y_rate_integral = (int16_t) (accumulated_gyro_y * 10.0f);	//mrad*10
+	f_integral.gyro_z_rate_integral = (int16_t) (accumulated_gyro_z * 10.0f); //mrad*10
+	f_integral.pixel_flow_x_integral = (int16_t) (accumulated_flow_x * 10.0f); //mrad*10
+	f_integral.pixel_flow_y_integral = (int16_t) (accumulated_flow_y * 10.0f); //mrad*10
+	f_integral.integration_timespan = (uint32_t) integration_timespan;     //microseconds
+	f_integral.ground_distance = (uint16_t) (ground_distance * 1000);		    //mmeters
+	f_integral.sonar_timestamp = (uint32_t) time_since_last_sonar_update;  //microseconds
+	f_integral.qual =	(uint8_t) (accumulated_quality / accumulated_framecount); //0-255 linear quality measurement 0=bad, 255=best
+	f_integral.gyro_temperature = (int16_t) gyro_temp;//Temperature * 100 in centi-degrees Celsius
 
 	notpublishedIndexFrame1 = 1 - publishedIndexFrame1; // choose not the current published 1 buffer
 	notpublishedIndexFrame2 = 1 - publishedIndexFrame2; // choose not the current published 2 buffer
 
 	// HACK!! To get the data
-	// In a V2 hw build with can and uavcan these macros 
+	// In a V2 hw build with can and uavcan these macros
 	// are used to passs the data to uavcan.
 
-        uavcan_export(&pd->frame, &f, I2C_FRAME_SIZE);
-        uavcan_export(&pd->integral_frame, &f_integral, I2C_INTEGRAL_FRAME_SIZE);
+  uavcan_export(&pd->frame, &f, I2C_FRAME_SIZE);
+  uavcan_export(&pd->integral_frame, &f_integral, I2C_INTEGRAL_FRAME_SIZE);
 
         // fill I2C transmitbuffer1 with frame1 values
 	memcpy(&(txDataFrame1[notpublishedIndexFrame1]),
 		&f, I2C_FRAME_SIZE);
 
 	// fill I2C transmitbuffer2 with frame2 values
+	//debug_int_message_buffer("I2C_FRAME_SIZE:",I2C_FRAME_SIZE);
+	//debug_message_send_one();
+	//debug_int_message_buffer("I2C_INTEGRAL_FRAME_SIZE:",I2C_INTEGRAL_FRAME_SIZE);
+	//debug_message_send_one();
+
+	//debug_string_message_buffer(f_integral);
+	//debug_message_send_one();
+
 	memcpy(&(txDataFrame2[notpublishedIndexFrame2]),
 		&f_integral, I2C_INTEGRAL_FRAME_SIZE);
 
@@ -376,6 +437,9 @@ void update_TX_buffer(float pixel_flow_x, float pixel_flow_y,
 	//swap buffers frame2 if I2C bus is idle
 	if (readout_done_frame2) {
 		publishedIndexFrame2 = 1 - publishedIndexFrame2;
+		//debug_int_message_buffer("readout_done_frame2-2-2-2:",readout_done_frame2);
+		//debug_message_send_one();
+
 	}
 
 	frame_count++;
